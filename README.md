@@ -1,19 +1,19 @@
-# gico
+# soryu
 
 glitch an image in the terminal
 
 ## Installation
 
-`go get github.com/enjuus/gico`
+`go get github.com/enjuus/soryu`
 
 ## Usage
 
 ```
 NAME:
-   gico - CLI too glitch an image
+   soryu - CLI too glitch an image
 
 USAGE:
-   gico [options]
+   soryu [options]
 
 COMMANDS:
    help, h  Shows a list of commands or help for one command
