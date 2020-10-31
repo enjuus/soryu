@@ -8,7 +8,8 @@ glitch an image in the terminal
 
 ## Usage
 
-```NAME:
+```
+NAME:
    gico - CLI too glitch an image
 
 USAGE:
@@ -33,4 +34,21 @@ GLOBAL OPTIONS:
    --streak-width value, --sw value             the width of the streaks (default: 3)
    --vertical-split-length value, --vspl value  the length of the vertical splits (default: 50)
    --vertical-split-width value, --vspw value   the width of the vertical splits (default: 3)
-   --help, -h                                   show help (default: false)```
+   --help, -h                                   show help (default: false)
+```
+
+
+## Examples
+
+Original
+
+![original image](https://raw.githubusercontent.com/enjuus/soryu/main/examples/example.png)
+
+
+With `Burst`, `Stretch`, `Streak` and `Split`
+
+![modified 1](https://raw.githubusercontent.com/enjuus/soryu/main/examples/burst-stretch-streak-split.png)
+
+With `Shift` and `Streak`
+
+![modified 2](https://raw.githubusercontent.com/enjuus/soryu/main/examples/shift-right-streak.png)
