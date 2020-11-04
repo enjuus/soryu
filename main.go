@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -14,10 +15,12 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/disintegration/imaging"
 	colorful "github.com/lucasb-eyer/go-colorful"
 	"github.com/urfave/cli"
 )
@@ -37,6 +40,7 @@ var (
 	verticalSplitWidth  int
 	verticalSplitLength int
 	seed                int64
+	makegif             bool
 )
 
 const MAXC = 1<<16 - 1
@@ -46,6 +50,11 @@ type Img struct {
 	Out     draw.Image
 	Bounds  image.Rectangle
 	imgtype string
+}
+
+type Images struct {
+	In     image.Image
+	Gifify []Img
 }
 
 func NewImage(file string) (*Img, error) {
@@ -157,7 +166,7 @@ func (i *Img) Streak(streaks, length int, left bool) {
 
 func (i *Img) Burst() {
 	b := i.Bounds
-	offset := rand.Intn(b.Dy()/10) + 1
+	offset := rand.Intn(b.Dy()/10) + 25
 	alpha := uint32(rand.Intn(MAXC))
 
 	var out color.RGBA64
@@ -388,20 +397,25 @@ func ParseHexColor(s string) (c color.RGBA, err error) {
 	return
 }
 
-func Run() {
+func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 	i, err := NewImage(inputFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	i.Seed(seed)
 	i.Copy()
 	commands := strings.Split(effects, ",")
 	for _, effect := range commands {
 		fmt.Println("Applying ", effect)
 		switch effect {
 		case "Streak":
+			if imgNumber%2 == 0 {
+				streakAmount += (rand.Intn(100) / 5) + 5
+			}
 			i.Streak(streakAmount, streakWidth, streakDirection)
 		case "Burst":
+			if imgNumber%2 == 0 {
+				continue
+			}
 			i.Burst()
 		case "ShiftChannel":
 			i.ShiftChannel(shiftChannel)
@@ -412,27 +426,97 @@ func Run() {
 		case "ColorBoost":
 			i.ColorBoost(colorBoost)
 		case "Split":
-			i.Split(splitWidth, splitLength, false)
+			newWidth := splitWidth
+			if imgNumber == 1 || imgNumber == 3 {
+				newWidth = splitWidth + rand.Intn(10)
+			}
+			i.Split(newWidth, splitLength, false)
 		case "VerticalSplit":
 			i.VerticalSplit(splitWidth, splitLength, false)
 		case "Noise":
 			i.Noise(noiseColor)
 		}
 	}
-	newFile := fmt.Sprintf("./%s", outputFile) // TODO make flag
+	newFile := fmt.Sprintf("%s", fileName)
 	f, err := os.Create(newFile)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("Writing file to ", newFile)
 	i.Write(f)
+	return i
+}
+
+func Run() {
+	amount := 10
+	if makegif == false {
+		CreateGlitchedImage(outputFile, false, 1)
+		os.Exit(0)
+	}
+	for i := 0; i < amount; i++ {
+		rand.Seed(time.Now().UTC().UnixNano())
+		tmpFileName := fmt.Sprintf("./temp%d.png", i) //TODO Write to temp folder for each OS
+		CreateGlitchedImage(tmpFileName, true, i)
+	}
+	srcFiles, err := filepath.Glob("temp*.png")
+	if err != nil {
+		log.Fatalf("error in globbing source file pattern %s", err)
+	}
+
+	if len(srcFiles) == 0 {
+		log.Fatalf("No source images found via pattern")
+	}
+
+	sort.Strings(srcFiles)
+
+	var frames []*image.Paletted
+
+	for _, filename := range srcFiles {
+		img, err := imaging.Open(filename)
+		buf := bytes.Buffer{}
+		if err := gif.Encode(&buf, img, nil); err != nil {
+			log.Printf("Skilling file %s due to errorr in gif encoding: %s", filename, err)
+		}
+
+		tmpimg, err := gif.Decode(&buf)
+		if err != nil {
+			log.Printf("skipping file %s due to weird error reading the temp gif: %s", filename, err)
+		}
+
+		frames = append(frames, tmpimg.(*image.Paletted))
+	}
+	log.Printf("Parsed all images... creating gif")
+	newFile := fmt.Sprintf("%s", outputFile)
+	opfile, err := os.Create(newFile)
+	if err != nil {
+		log.Fatalf("Error creating the destination file %s : %s", outputFile, err)
+	}
+
+	delays := make([]int, len(frames))
+	for j, _ := range delays {
+		delays[j] = 15
+	}
+
+	if err := gif.EncodeAll(opfile, &gif.GIF{Image: frames, Delay: delays, LoopCount: 0}); err != nil {
+		log.Printf("error encoding output into animated gif: %s", err)
+	}
+	opfile.Close()
+	files, err := filepath.Glob("temp*.png")
+	if err != nil {
+		log.Fatalln("couldn't delete temp files", err)
+	}
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			log.Fatalln("couldnt remove file", f, err)
+		}
+	}
 }
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "gico"
+	app.Name = "soryu"
 	app.Usage = "CLI too glitch an image"
-	app.UsageText = "gico [options]"
+	app.UsageText = "soryu [options]"
 	app.Flags = []cli.Flag{
 		&cli.Int64Flag{
 			Name:    "seed",
@@ -523,6 +607,12 @@ func main() {
 			Usage:   "the length of the vertical splits",
 			Value:   50,
 		},
+		&cli.BoolFlag{
+			Name:    "gif",
+			Aliases: []string{"g"},
+			Usage:   "generate an animated gif from multiple glitched versions of the given image",
+			Value:   false,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -540,6 +630,7 @@ func main() {
 		splitLength = c.Int("split-length")
 		verticalSplitWidth = c.Int("vertical-split-width")
 		verticalSplitLength = c.Int("vertical-split-length")
+		makegif = c.Bool("gif")
 		if inputFile == "" {
 			log.Fatal("Please enter a file")
 		}
