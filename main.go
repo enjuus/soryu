@@ -41,6 +41,8 @@ var (
 	verticalSplitLength int
 	seed                int64
 	makegif             bool
+	gifDelay            int
+	gifFrames           int
 )
 
 const MAXC = 1<<16 - 1
@@ -426,13 +428,23 @@ func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 		case "ColorBoost":
 			i.ColorBoost(colorBoost)
 		case "Split":
+			if imgNumber%5 == 0 {
+				continue
+			}
 			newWidth := splitWidth
 			if imgNumber == 1 || imgNumber == 3 {
 				newWidth = splitWidth + rand.Intn(10)
 			}
 			i.Split(newWidth, splitLength, false)
 		case "VerticalSplit":
-			i.VerticalSplit(splitWidth, splitLength, false)
+			if imgNumber%5 == 0 {
+				continue
+			}
+			newWidth := splitWidth
+			if imgNumber == 1 || imgNumber == 3 {
+				newWidth = splitWidth + rand.Intn(10)
+			}
+			i.VerticalSplit(newWidth, splitLength, false)
 		case "Noise":
 			i.Noise(noiseColor)
 		}
@@ -448,12 +460,11 @@ func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 }
 
 func Run() {
-	amount := 10
 	if makegif == false {
 		CreateGlitchedImage(outputFile, false, 1)
 		os.Exit(0)
 	}
-	for i := 0; i < amount; i++ {
+	for i := 0; i < gifFrames; i++ {
 		rand.Seed(time.Now().UTC().UnixNano())
 		tmpFileName := fmt.Sprintf("./temp%d.png", i) //TODO Write to temp folder for each OS
 		CreateGlitchedImage(tmpFileName, true, i)
@@ -494,7 +505,7 @@ func Run() {
 
 	delays := make([]int, len(frames))
 	for j, _ := range delays {
-		delays[j] = 15
+		delays[j] = gifDelay
 	}
 
 	if err := gif.EncodeAll(opfile, &gif.GIF{Image: frames, Delay: delays, LoopCount: 0}); err != nil {
@@ -613,6 +624,18 @@ func main() {
 			Usage:   "generate an animated gif from multiple glitched versions of the given image",
 			Value:   false,
 		},
+		&cli.IntFlag{
+			Name:    "gif-delay",
+			Aliases: []string{"gd"},
+			Usage:   "the amount of delay between frames",
+			Value:   20,
+		},
+		&cli.IntFlag{
+			Name:    "gif-frames",
+			Aliases: []string{"gf"},
+			Usage:   "the amount of frames to be genrated for the gif",
+			Value:   10,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -631,6 +654,8 @@ func main() {
 		verticalSplitWidth = c.Int("vertical-split-width")
 		verticalSplitLength = c.Int("vertical-split-length")
 		makegif = c.Bool("gif")
+		gifDelay = c.Int("gif-delay")
+		gifFrames = c.Int("gif-frames")
 		if inputFile == "" {
 			log.Fatal("Please enter a file")
 		}
