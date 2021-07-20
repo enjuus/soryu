@@ -20,9 +20,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anthonynsimon/bild/blend"
+	"github.com/anthonynsimon/bild/noise"
 	"github.com/disintegration/imaging"
 	colorful "github.com/lucasb-eyer/go-colorful"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 )
 
 var (
@@ -33,6 +35,7 @@ var (
 	streakWidth         int
 	streakDirection     bool
 	noiseColor          string
+	newNoise            bool
 	shiftChannel        bool
 	colorBoost          string
 	splitWidth          int
@@ -192,6 +195,11 @@ func (i *Img) Burst() {
 			i.Out.Set(x, y, &out)
 		}
 	}
+}
+
+func (i *Img) GaussianNoise() {
+	result := noise.Generate(i.Bounds.Max.X, i.Bounds.Max.Y, &noise.Options{Monochrome: true, NoiseFn: noise.Gaussian})
+	i.Out = blend.Opacity(i.Out, result, 0.35)
 }
 
 func (i *Img) Noise(hex string) {
@@ -447,6 +455,8 @@ func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 			i.VerticalSplit(newWidth, splitLength, false)
 		case "Noise":
 			i.Noise(noiseColor)
+		case "GaussianNoise":
+			i.GaussianNoise()
 		}
 	}
 	newFile := fmt.Sprintf("%s", fileName)
@@ -550,7 +560,7 @@ func main() {
 			Name:    "order",
 			Aliases: []string{"o"},
 			Usage:   "define which effect are to be applied and the order of them",
-			Value:   "Streak,Burst,ShiftChannel,Ghost,GhostStretch,ColorBoost,Split,VerticalSplit,Noise",
+			Value:   "Streak,Burst,ShiftChannel,Ghost,GhostStretch,ColorBoost,Split,VerticalSplit,Noise,GaussianNoise",
 		},
 		// Streak - amount int, width int, direction bool true = left
 		&cli.IntFlag{
