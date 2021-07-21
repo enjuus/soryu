@@ -6,6 +6,8 @@ glitch an image in the terminal
 
 `go get github.com/enjuus/soryu`
 
+It is also available in the AUR thanks to @BachoSeven: [soryu-git](https://aur.archlinux.org/packages/soryu-git)
+
 ## Usage
 
 ```
