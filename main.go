@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/StephaneBunel/bresenham"
 	"github.com/anthonynsimon/bild/blend"
 	"github.com/anthonynsimon/bild/noise"
 	"github.com/disintegration/imaging"
@@ -28,24 +29,21 @@ import (
 )
 
 var (
-	inputFile           string
-	outputFile          string
-	effects             string
-	streakAmount        int
-	streakWidth         int
-	streakDirection     bool
-	noiseColor          string
-	newNoise            bool
-	shiftChannel        bool
-	colorBoost          string
-	splitWidth          int
-	splitLength         int
-	verticalSplitWidth  int
-	verticalSplitLength int
-	seed                int64
-	makegif             bool
-	gifDelay            int
-	gifFrames           int
+	inputFile       string
+	outputFile      string
+	effects         string
+	streakAmount    int
+	streakWidth     int
+	streakDirection bool
+	noiseColor      string
+	shiftChannel    bool
+	colorBoost      string
+	splitWidth      int
+	splitLength     int
+	seed            int64
+	makegif         bool
+	gifDelay        int
+	gifFrames       int
 )
 
 const MAXC = 1<<16 - 1
@@ -134,13 +132,13 @@ func (i *Img) Streak(streaks, length int, left bool) {
 
 		var streakEnd int
 		if length < 0 {
-			if left == true {
+			if left {
 				streakEnd = inBounds.Min.X
 			} else {
 				streakEnd = inBounds.Max.X
 			}
 		} else {
-			if left == true {
+			if left {
 				streakEnd = minInt(x-length, inBounds.Min.X)
 			} else {
 				streakEnd = minInt(x+length, inBounds.Max.X)
@@ -159,7 +157,7 @@ func (i *Img) Streak(streaks, length int, left bool) {
 			}
 
 			i.Out.Set(x, y, k)
-			if left == true {
+			if left {
 				x--
 			} else {
 				x++
@@ -240,7 +238,7 @@ func (i *Img) ShiftChannel(left bool) {
 				A: uint8(a),
 			}
 
-			if left == true {
+			if left {
 				shiftedColor = color.RGBA{
 					R: uint8(g),
 					G: uint8(b),
@@ -265,8 +263,8 @@ func (i *Img) Ghost() {
 
 	m := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
 	c := color.RGBA{255, 255, 255, uint8(rand.Intn(255))}
-	draw.Draw(m, m.Bounds(), &image.Uniform{c}, image.ZP, draw.Src)
-	draw.DrawMask(i.Out, bounds, img, image.ZP, m, image.ZP, draw.Over)
+	draw.Draw(m, m.Bounds(), &image.Uniform{c}, image.Point{0, 0}, draw.Src)
+	draw.DrawMask(i.Out, bounds, img, image.Point{0, 0}, m, image.Point{0, 0}, draw.Over)
 }
 
 // TODO: fix
@@ -280,10 +278,10 @@ func (i *Img) GhostStretch() {
 
 	m := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
 	c := color.RGBA{0, 0, 0, alpha}
-	draw.Draw(m, m.Bounds(), &image.Uniform{c}, image.ZP, draw.Src)
+	draw.Draw(m, m.Bounds(), &image.Uniform{c}, image.Point{0, 0}, draw.Src)
 
 	for j := 1; j < ghosts; j++ {
-		draw.DrawMask(i.Out, bounds, i.Out, image.Pt(x*j, y*j), m, image.ZP, draw.Over)
+		draw.DrawMask(i.Out, bounds, i.Out, image.Pt(x*j, y*j), m, image.Point{0, 0}, draw.Over)
 	}
 }
 
@@ -372,16 +370,17 @@ func (i *Img) VerticalSplit(width, height int, split bool) {
 	}
 }
 
-func c(a uint32) uint8 {
-	return uint8((float64(a) / MAXC) * 255)
+func (i *Img) Scanlines() {
+	var color = color.RGBA{0, 0, 0, 150}
+	for y := 0; y < i.Bounds.Dy(); y++ {
+		if y%3 == 0 {
+			bresenham.DrawLine(i.Out, 0, y, i.Bounds.Dx(), y, color)
+		}
+	}
 }
 
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-
-	return b
+func c(a uint32) uint8 {
+	return uint8((float64(a) / MAXC) * 255)
 }
 
 func minInt(a, b int) int {
@@ -457,9 +456,11 @@ func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 			i.Noise(noiseColor)
 		case "GaussianNoise":
 			i.GaussianNoise()
+		case "Scanlines":
+			i.Scanlines()
 		}
 	}
-	newFile := fmt.Sprintf("%s", fileName)
+	newFile := fileName
 	f, err := os.Create(newFile)
 	if err != nil {
 		log.Fatal(err)
@@ -470,7 +471,8 @@ func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 }
 
 func Run() {
-	if makegif == false {
+	if !makegif {
+		rand.Seed(seed)
 		CreateGlitchedImage(outputFile, false, 1)
 		os.Exit(0)
 	}
@@ -494,6 +496,10 @@ func Run() {
 
 	for _, filename := range srcFiles {
 		img, err := imaging.Open(filename)
+		if err != nil {
+			fmt.Println("Couldn't load file")
+			os.Exit(1)
+		}
 		buf := bytes.Buffer{}
 		if err := gif.Encode(&buf, img, nil); err != nil {
 			log.Printf("Skilling file %s due to errorr in gif encoding: %s", filename, err)
@@ -507,14 +513,14 @@ func Run() {
 		frames = append(frames, tmpimg.(*image.Paletted))
 	}
 	log.Printf("Parsed all images... creating gif")
-	newFile := fmt.Sprintf("%s", outputFile)
+	newFile := outputFile
 	opfile, err := os.Create(newFile)
 	if err != nil {
 		log.Fatalf("Error creating the destination file %s : %s", outputFile, err)
 	}
 
 	delays := make([]int, len(frames))
-	for j, _ := range delays {
+	for j := range delays {
 		delays[j] = gifDelay
 	}
 
@@ -560,7 +566,7 @@ func main() {
 			Name:    "order",
 			Aliases: []string{"o"},
 			Usage:   "define which effect are to be applied and the order of them",
-			Value:   "Streak,Burst,ShiftChannel,Ghost,GhostStretch,ColorBoost,Split,VerticalSplit,Noise,GaussianNoise",
+			Value:   "Streak,Burst,ShiftChannel,Ghost,GhostStretch,ColorBoost,Split,VerticalSplit,Noise,GaussianNoise,Scanlines",
 		},
 		// Streak - amount int, width int, direction bool true = left
 		&cli.IntFlag{
@@ -661,8 +667,6 @@ func main() {
 		colorBoost = c.String("color-boost")
 		splitWidth = c.Int("split-width")
 		splitLength = c.Int("split-length")
-		verticalSplitWidth = c.Int("vertical-split-width")
-		verticalSplitLength = c.Int("vertical-split-length")
 		makegif = c.Bool("gif")
 		gifDelay = c.Int("gif-delay")
 		gifFrames = c.Int("gif-frames")

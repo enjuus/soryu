@@ -60,3 +60,5 @@ With `Shift` and `Streak`
 `--gif` generates 10 different images and combines them into an animated gif
 
 ![gif](https://raw.githubusercontent.com/enjuus/soryu/main/examples/gif-example.gif)
+
+![noise](https://raw.githubusercontent.com/enjuus/soryu/main/examples/burst-gaussiannoise-scanlines.gif)
