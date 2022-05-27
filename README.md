@@ -62,3 +62,7 @@ With `Shift` and `Streak`
 ![gif](https://raw.githubusercontent.com/enjuus/soryu/main/examples/gif-example.gif)
 
 ![noise](https://raw.githubusercontent.com/enjuus/soryu/main/examples/burst-gaussiannoise-scanlines.gif)
+
+With `BigLines`
+
+![biglines](https://raw.githubusercontent.com/enjuus/soryu/main/examples/biglines.png)

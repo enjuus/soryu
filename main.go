@@ -227,25 +227,14 @@ func (i *Img) Noise(hex string) {
 
 func (i *Img) ShiftChannel(left bool) {
 	bounds := i.Bounds
+	leftInt := 0
+	if left {
+		leftInt = 1
+	}
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			r, g, b, a := i.Out.At(x, y).RGBA()
-			shiftedColor := color.RGBA{
-				R: uint8(b),
-				G: uint8(r),
-				B: uint8(g),
-				A: uint8(a),
-			}
-
-			if left {
-				shiftedColor = color.RGBA{
-					R: uint8(g),
-					G: uint8(b),
-					B: uint8(r),
-					A: uint8(a),
-				}
-			}
+			shiftedColor := shiftColor(i.Out.At(x, y), leftInt)
 			i.Out.Set(x, y, shiftedColor)
 		}
 	}
@@ -324,7 +313,7 @@ func (i *Img) Split(height, width int, split bool) {
 			for cursor < next {
 				for x := bounds.Min.X; x < bounds.Max.X; x++ {
 					tx := x + width
-					if tx > bounds.Max.X {
+					if tx >= bounds.Max.X {
 						tx = tx - bounds.Max.X
 					}
 					c := i.In.At(tx, cursor)
@@ -371,11 +360,50 @@ func (i *Img) VerticalSplit(width, height int, split bool) {
 }
 
 func (i *Img) Scanlines() {
-	var color = color.RGBA{0, 0, 0, 150}
+	var color = color.RGBA{0, 0, 0, 50}
 	for y := 0; y < i.Bounds.Dy(); y++ {
 		if y%3 == 0 {
 			bresenham.DrawLine(i.Out, 0, y, i.Bounds.Dx(), y, color)
 		}
+	}
+}
+
+func (i *Img) BigLines() {
+	bounds := i.Bounds
+	cursor := bounds.Min.Y
+	split := false
+	height := i.Bounds.Max.Y * rand.Intn(25) / 100
+	width := i.Bounds.Max.X * rand.Intn(10) / 100
+	y := 0
+
+	for cursor < bounds.Max.Y {
+		if split {
+			jitter := rand.Intn(200)
+			next := cursor + height + jitter
+			if next >= bounds.Max.Y {
+				return
+			}
+			for cursor <= next {
+				for x := bounds.Min.X; x <= bounds.Max.X; x++ {
+					jitterWidth := rand.Intn(30)
+					tx := x + width + jitterWidth
+					if tx >= bounds.Max.X {
+						tx = tx - bounds.Max.X
+					}
+					clr := i.In.At(x, cursor)
+					if y%3 == 0 {
+						clr = shiftColor(i.In.At(x, cursor), 1)
+					}
+					i.Out.Set(tx, cursor, clr)
+				}
+				cursor++
+			}
+			cursor = next
+		} else {
+			cursor = cursor + height
+		}
+		split = !split
+		y++
 	}
 }
 
@@ -404,6 +432,29 @@ func ParseHexColor(s string) (c color.RGBA, err error) {
 		err = fmt.Errorf("invalid llength, must be 7 or 4")
 	}
 	return
+}
+
+func shiftColor(in color.Color, left int) (out color.RGBA) {
+	var shiftedColor color.RGBA
+	r, g, b, a := in.RGBA()
+
+	shiftedColor = color.RGBA{
+		R: uint8(b),
+		G: uint8(r),
+		B: uint8(g),
+		A: uint8(a),
+	}
+
+	if left == 1 {
+		shiftedColor = color.RGBA{
+			R: uint8(g),
+			G: uint8(b),
+			B: uint8(r),
+			A: uint8(a),
+		}
+	}
+
+	return shiftedColor
 }
 
 func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
@@ -458,6 +509,15 @@ func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 			i.GaussianNoise()
 		case "Scanlines":
 			i.Scanlines()
+		case "BigLines":
+			if imgNumber%5 == 0 {
+				continue
+			}
+			/*newWidth := splitWidth
+			if imgNumber == 1 || imgNumber == 3 {
+				newWidth = splitWidth + rand.Intn(10)
+			}*/
+			i.BigLines()
 		}
 	}
 	newFile := fileName
