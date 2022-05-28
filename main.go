@@ -46,7 +46,20 @@ var (
 	gifFrames       int
 )
 
-const MAXC = 1<<16 - 1
+type Channel int
+
+const (
+	// Red is the red channel
+	Red Channel = iota
+	// Green is the green channel
+	Green
+	// Blue is the blue channel
+	Blue
+	// Alpha is the alpha channel
+	Alpha
+
+	MAXC = 1<<16 - 1
+)
 
 type Img struct {
 	In      image.Image
@@ -243,7 +256,7 @@ func (i *Img) ShiftChannel(left bool) {
 func (i *Img) Ghost() {
 	b := bytes.NewBuffer([]byte{})
 	var opt jpeg.Options
-	opt.Quality = rand.Intn(10)
+	opt.Quality = rand.Intn(50)
 
 	jpeg.Encode(b, i.Out, &opt)
 
@@ -253,7 +266,107 @@ func (i *Img) Ghost() {
 	m := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
 	c := color.RGBA{255, 255, 255, uint8(rand.Intn(255))}
 	draw.Draw(m, m.Bounds(), &image.Uniform{c}, image.Point{0, 0}, draw.Src)
-	draw.DrawMask(i.Out, bounds, img, image.Point{0, 0}, m, image.Point{0, 0}, draw.Over)
+	draw.DrawMask(i.Out, bounds, img, image.Point{5, 5}, m, image.Point{5, 5}, draw.Over)
+}
+
+func (i *Img) GhostTint() {
+	b := bytes.NewBuffer([]byte{})
+	var opt jpeg.Options
+	opt.Quality = rand.Intn(50)
+
+	jpeg.Encode(b, i.Out, &opt)
+
+	img, _ := jpeg.Decode(b)
+	bounds := i.Bounds
+
+	m := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	c := color.RGBA{255, 255, 255, uint8(rand.Intn(255))}
+	draw.Draw(m, m.Bounds(), &image.Uniform{c}, image.Point{0, 0}, draw.Src)
+	draw.DrawMask(i.Out, bounds, img, image.Point{5, 5}, m, image.Point{5, 5}, draw.Over)
+}
+
+func (i *Img) RandomCorruptions(uniform bool) {
+	iterations := int(float64(i.In.Bounds().Max.Y) * float64(i.In.Bounds().Max.X) * 0.03)
+
+	for it := 0; it <= iterations; it++ {
+		height := rand.Intn(int(float64(i.In.Bounds().Max.Y) * 0.01))
+		width := rand.Intn(int(float64(i.In.Bounds().Max.X) * 0.01))
+		x := rand.Intn(i.In.Bounds().Max.X)
+		y := rand.Intn(i.In.Bounds().Max.Y)
+		destX := x + width
+		destY := y + height
+
+		r := image.Rect(x, y, destX, destY)
+		p := image.Pt(x, y)
+		randomColor := color.RGBA{0, 200, 0, 100}
+		if uniform {
+			randomColor = shiftColor(i.In.At(x, y), 1)
+		}
+		draw.Draw(i.Out, r, &image.Uniform{randomColor}, p, draw.Src)
+	}
+}
+
+func (i *Img) CopyChannelBigLines() {
+	bounds := i.Bounds
+	cursor := bounds.Min.Y
+	split := false
+	height := i.Bounds.Max.Y * rand.Intn(25) / 100
+	width := i.Bounds.Max.X * rand.Intn(10) / 100
+	y := 0
+	jitter := rand.Intn(100)
+
+	for cursor < bounds.Max.Y {
+		rC := RandomChannel()
+		if split {
+			jitter := rand.Intn(200)
+			jitterWidth := rand.Intn(30)
+			next := cursor + height + jitter
+			if next >= bounds.Max.Y {
+				return
+			}
+			for cursor <= next {
+				for x := bounds.Min.X; x <= bounds.Max.X; x++ {
+					tx := x + width + jitterWidth
+					if tx >= bounds.Max.X {
+						tx = tx - bounds.Max.X
+					}
+					i.CopyChannel(x, cursor, tx, cursor, rC)
+				}
+				cursor++
+			}
+			cursor = next
+		} else {
+			cursor = cursor + height + jitter
+		}
+		split = !split
+		y++
+	}
+}
+
+func (i *Img) CopyChannel(inX, inY, outX, outY int, copyChannel Channel) {
+	// Note type assertion to get a color.RGBA
+	r, g, b, a := i.In.At(inX, inY).RGBA()
+	dr, dg, db, da := i.Out.At(outX, outY).RGBA()
+
+	switch copyChannel {
+	case Red:
+		dr = r
+	case Green:
+		dg = g
+	case Blue:
+		db = b
+	case Alpha:
+		da = a
+	}
+
+	shiftedColor := color.RGBA{
+		R: uint8(dr),
+		G: uint8(dg),
+		B: uint8(db),
+		A: uint8(da),
+	}
+
+	i.Out.Set(outX, outY, shiftedColor)
 }
 
 // TODO: fix
@@ -407,6 +520,16 @@ func (i *Img) BigLines() {
 	}
 }
 
+func RandomChannel() Channel {
+	r := rand.Float32()
+	if r < 0.33 {
+		return Green
+	} else if r < 0.66 {
+		return Red
+	}
+	return Blue
+}
+
 func c(a uint32) uint8 {
 	return uint8((float64(a) / MAXC) * 255)
 }
@@ -513,11 +636,17 @@ func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 			if imgNumber%5 == 0 {
 				continue
 			}
-			/*newWidth := splitWidth
-			if imgNumber == 1 || imgNumber == 3 {
-				newWidth = splitWidth + rand.Intn(10)
-			}*/
 			i.BigLines()
+		case "CopyChannelBigLines":
+			i.CopyChannelBigLines()
+		case "RandomCorruptions":
+			if makegif {
+				if imgNumber%6 == 0 {
+					i.RandomCorruptions(false)
+				}
+			} else {
+				i.RandomCorruptions(false)
+			}
 		}
 	}
 	newFile := fileName
