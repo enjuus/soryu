@@ -26,24 +26,27 @@ import (
 	"github.com/disintegration/imaging"
 	colorful "github.com/lucasb-eyer/go-colorful"
 	"github.com/urfave/cli/v2"
+	xdraw "golang.org/x/image/draw"
 )
 
 var (
-	inputFile       string
-	outputFile      string
-	effects         string
-	streakAmount    int
-	streakWidth     int
-	streakDirection bool
-	noiseColor      string
-	shiftChannel    bool
-	colorBoost      string
-	splitWidth      int
-	splitLength     int
-	seed            int64
-	makegif         bool
-	gifDelay        int
-	gifFrames       int
+	inputFile            string
+	outputFile           string
+	effects              string
+	streakAmount         int
+	streakWidth          int
+	streakDirection      bool
+	noiseColor           string
+	shiftChannel         bool
+	colorBoost           string
+	splitWidth           int
+	splitLength          int
+	seed                 int64
+	makegif              bool
+	gifDelay             int
+	gifFrames            int
+	overlayImage         string
+	overlayEveryNthFrame int
 )
 
 type Channel int
@@ -520,6 +523,24 @@ func (i *Img) BigLines() {
 	}
 }
 
+func (i *Img) OverlayImage() {
+	overlay, err := os.Open(overlayImage)
+	if err != nil {
+		fmt.Println("Could not open image!", err)
+		os.Exit(1)
+	}
+	defer overlay.Close()
+
+	img, err := png.Decode(overlay)
+	if err != nil {
+		fmt.Println("Could not decode .png file", err)
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, i.In.Bounds().Max.X, i.In.Bounds().Max.Y))
+
+	xdraw.ApproxBiLinear.Scale(i.Out, dst.Rect, img, img.Bounds(), draw.Over, nil)
+}
+
 func RandomChannel() Channel {
 	r := rand.Float32()
 	if r < 0.33 {
@@ -646,6 +667,14 @@ func CreateGlitchedImage(fileName string, reseed bool, imgNumber int) *Img {
 				}
 			} else {
 				i.RandomCorruptions(false)
+			}
+		case "OverlayImage":
+			if makegif {
+				if imgNumber%overlayEveryNthFrame == 0 {
+					i.OverlayImage()
+				}
+			} else {
+				i.OverlayImage()
 			}
 		}
 	}
@@ -841,6 +870,18 @@ func main() {
 			Usage:   "the amount of frames to be genrated for the gif",
 			Value:   10,
 		},
+		&cli.StringFlag{
+			Name:    "overlay-image",
+			Aliases: []string{"oi"},
+			Usage:   "overlay a png image over the file",
+			Value:   "",
+		},
+		&cli.IntFlag{
+			Name:    "overlay-every-nth-frame",
+			Aliases: []string{"oenf"},
+			Usage:   "overlay every nth frame in a gif",
+			Value:   3,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -859,6 +900,8 @@ func main() {
 		makegif = c.Bool("gif")
 		gifDelay = c.Int("gif-delay")
 		gifFrames = c.Int("gif-frames")
+		overlayImage = c.String("overlay-image")
+		overlayEveryNthFrame = c.Int("overlay-every-nth-frame")
 		if inputFile == "" {
 			log.Fatal("Please enter a file")
 		}
